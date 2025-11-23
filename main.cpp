@@ -5,16 +5,8 @@
 
 using namespace std;
 
-// Función auxiliar para imprimir la lista de canciones (Solo para debug)
-void mostrarEstadoMemoria(GestorGrafo& app) {
-    cout << "\n--- ESTADO INTERNO DEL GRAFO (MEMORIA) ---\n";
-    // Aquí no puedo acceder a listaUsuarios porque es privada en GestorGrafo
-    // Pero confiaremos en los logs de consola por ahora.
-    // En la version final haremos metodos 'get' o 'friend'.
-}
-
 int main() {
-    cout << "=== INICIANDO BIPARTUNES TEST V1.0 ===\n" << endl;
+    cout << "=== INICIANDO BIPARTUNES TEST V2.0 (CON RECOMENDACIONES) ===\n" << endl;
 
     // 1. Instanciamos el Motor
     GestorGrafo app;
@@ -50,22 +42,39 @@ int main() {
     // Maria escucha Llanera (Curiosidad)
     app.registrarInteraccion(2, 1, 3, false, "Interesante ritmo");
 
+    // NUEVA INTERACCIÓN PARA PROBAR RECOMENDACIÓN
+    // Maria descubre salsa. Juan NO la ha escuchado.
+    // Como Juan y Maria coinciden en Queen y Llanera, el sistema debería pensar:
+    // "Si a Maria le gustó El Cantante, a Juan quizás también".
+    cout << "\n[PASO 3.5] Maria descubre salsa..." << endl;
+    app.registrarInteraccion(2, 3, 5, true, "Sabor latino!");
+
     // 4. Verificación Visual (Output esperado)
     cout << "\n[PASO 4] Probando Algoritmos Basicos..." << endl;
     
-    cout << "Top Canciones (Deberia salir Queen o Ay Mi Llanura primero por actividad):" << endl;
+    cout << "Top Canciones (Ordenado por popularidad):" << endl;
     vector<Cancion*> top = app.obtenerTopCanciones();
     
-    // Nota: Como aun no implementamos la logica de ordenamiento en obtenerTopCanciones, 
-    // esto probablemente imprimira en el orden que quedaron en la lista.
-    // Pero nos sirve para ver que NO explota el programa.
     for(Cancion* c : top) {
-        cout << " - " << c->nombre << " (" << c->artista << ")" << endl;
+        cout << " - " << c->nombre << " (" << c->artista << ") [" << c->totalReproducciones << " repros]" << endl;
+    }
+
+    cout << "\n[PASO 5] Probando Recomendaciones Inteligentes para Juan..." << endl;
+    // Pedimos recomendaciones para Juan (ID 1)
+    vector<Cancion*> recs = app.recomendarParaUsuario(1); 
+    
+    cout << "\nRESULTADO FINAL:" << endl;
+    if(recs.empty()) {
+        cout << " :( No hay recomendaciones disponibles." << endl;
+    } else {
+        cout << "Canciones recomendadas para Juan:" << endl;
+        for(Cancion* c : recs) {
+            cout << " * " << c->nombre << " (Genero: " << c->genero << ")" << endl;
+        }
     }
 
     cout << "\n=== FIN DE PRUEBAS ===" << endl;
     // Al salir del main, se llama el destructor ~GestorGrafo() automaticamente.
-    // Si ves "Memoria liberada correctamente", ¡TRIUNFASTE!
     
     return 0;
 }

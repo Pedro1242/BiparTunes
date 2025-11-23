@@ -1,11 +1,14 @@
 #include "GestorGrafo.h"
 #include <iostream>
-#include <fstream> // Para leer el CSV más adelante
+#include <fstream>
 #include <sstream>
 
 using namespace std;
 
-// Constructor: Inicializa el grafo vacío
+// ==========================================
+// GESTIÓN DE MEMORIA Y CONSTRUCTOR
+// ==========================================
+
 GestorGrafo::GestorGrafo() {
     listaUsuarios = nullptr;
     listaCanciones = nullptr;
@@ -14,19 +17,16 @@ GestorGrafo::GestorGrafo() {
     totalInteracciones = 0;
 }
 
-// Destructor: LA LIMPIEZA MANUAL (Vital para tu nota)
 GestorGrafo::~GestorGrafo() {
-    // Aquí demostramos que sabemos borrar memoria sin dejar fugas
-    // 1. Borrar Usuarios
+    cout << "[SISTEMA] Iniciando limpieza de memoria..." << endl;
+    
+    // 1. Borrar Usuarios y sus Aristas (Historial)
     Usuario* userActual = listaUsuarios;
     while (userActual != nullptr) {
         Usuario* aBorrar = userActual;
         userActual = userActual->siguiente;
         
-        // OJO: Las aristas se comparten. 
-        // Estrategia: Borraremos las aristas al recorrer los usuarios, 
-        // y cuando borremos canciones solo borramos el nodo canción.
-        
+        // Limpiar las aristas de este usuario
         Arista* aristaActual = aBorrar->cabezaHistorial;
         while (aristaActual != nullptr) {
             Arista* aristaBorrar = aristaActual;
@@ -47,16 +47,17 @@ GestorGrafo::~GestorGrafo() {
     cout << "[SISTEMA] Memoria liberada correctamente." << endl;
 }
 
-// --- MÉTODOS DE BÚSQUEDA (Privados) ---
+// ==========================================
+// MÉTODOS PRIVADOS (Auxiliares)
+// ==========================================
 
 Usuario* GestorGrafo::buscarUsuarioPorId(int id) {
     Usuario* temp = listaUsuarios;
-    // Recorrido clásico de lista enlazada
     while (temp != nullptr) {
         if (temp->id == id) return temp;
         temp = temp->siguiente;
     }
-    return nullptr; // No existe
+    return nullptr;
 }
 
 Cancion* GestorGrafo::buscarCancionPorId(int id) {
@@ -68,31 +69,37 @@ Cancion* GestorGrafo::buscarCancionPorId(int id) {
     return nullptr;
 }
 
-// --- LA MAGIA: CONECTAR NODOS (TEJIDO DE PUNTEROS) ---
+// Verifica si un usuario YA tiene esa canción en su historial
+bool GestorGrafo::haEscuchado(Usuario* u, Cancion* c) {
+    Arista* actual = u->cabezaHistorial;
+    while (actual != nullptr) {
+        if (actual->cancion == c) return true; // Ya la conoce
+        actual = actual->sigEnHistorialUsuario;
+    }
+    return false;
+}
+
+// ==========================================
+// LÓGICA DEL GRAFO (Punteros)
+// ==========================================
 
 void GestorGrafo::conectarNodos(Usuario* u, Cancion* c, Arista* nuevaArista) {
-    // Asignamos los dueños de la arista
+    // Asignamos los dueños
     nuevaArista->usuario = u;
     nuevaArista->cancion = c;
 
-    // 1. COSTURA HORIZONTAL (Lado del Usuario)
-    // La nueva arista apunta a lo que antes era la primera del usuario
+    // 1. COSTURA HORIZONTAL (Usuario -> Historial)
     nuevaArista->sigEnHistorialUsuario = u->cabezaHistorial;
-    // El usuario ahora apunta a la nueva arista como su primera
     u->cabezaHistorial = nuevaArista;
 
-    // 2. COSTURA VERTICAL (Lado de la Canción)
-    // La nueva arista apunta a la antigua primera interacción de la canción
+    // 2. COSTURA VERTICAL (Canción -> Oyentes)
     nuevaArista->sigEnOyentesCancion = c->cabezaOyentes;
-    // La canción actualiza su cabeza para apuntar a esta nueva interacción
     c->cabezaOyentes = nuevaArista;
     
-    // Aumentamos contadores para estadísticas rápidas
+    // Estadísticas
     c->totalReproducciones++;
     totalInteracciones++;
 }
-
-// --- REGISTRAR INTERACCIÓN (El método público) ---
 
 void GestorGrafo::registrarInteraccion(int idUsuario, int idCancion, int calificacion, 
                                        bool favorito, string comentario) {
@@ -105,51 +112,134 @@ void GestorGrafo::registrarInteraccion(int idUsuario, int idCancion, int calific
         return;
     }
 
-    // Creamos la arista en memoria dinámica (Heap)
     Arista* nueva = new Arista();
-    
-    // Llenamos datos básicos
     nueva->calificacion = calificacion;
     nueva->esFavorito = favorito;
     nueva->comentario = comentario;
 
-    // CÁLCULO DE PESO "REVOLUCIONARIO"
-    // Fórmula: (Stars * 20) + (Favorito extra 15)
+    // Cálculo de peso
     float pesoBase = (calificacion * 20.0f);
     if (favorito) pesoBase += 15.0f;
-    
-    // Aquí en el futuro agregaremos lógica de Vibe, por ahora peso numérico
     nueva->pesoFinal = pesoBase;
     
-    // Conectamos los cables
     conectarNodos(u, c, nueva);
     
     cout << "[EXITO] " << u->nombre << " escucho " << c->nombre << " (Peso: " << nueva->pesoFinal << ")" << endl;
 }
 
-// --- AGREGAR NODOS MAESTROS ---
+// ==========================================
+// GESTIÓN DE NODOS (ABM)
+// ==========================================
 
 void GestorGrafo::agregarUsuario(string nombre, string pais) {
-    // ID Autoincremental simple basado en conteo actual
     int nuevoId = totalUsuarios + 1;
-    
     Usuario* nuevo = new Usuario(nuevoId, nombre, pais);
-    
-    // Inserción en cabeza para la lista maestra de usuarios
+    // Inserción en cabeza (O(1))
     nuevo->siguiente = listaUsuarios;
     listaUsuarios = nuevo;
-    
     totalUsuarios++;
 }
 
 void GestorGrafo::agregarCancion(string nombre, string artista, Genero genero) {
     int nuevoId = totalCanciones + 1;
     
+    // CORRECCIÓN AQUÍ: Usamos 'nueva' en todo el bloque
     Cancion* nueva = new Cancion(nuevoId, nombre, artista, genero);
     
-    // Inserción en cabeza para la lista maestra de canciones
-    nueva->siguiente = listaCanciones;
-    listaCanciones = nueva;
+    // Inserción en cabeza (O(1))
+    nueva->siguiente = listaCanciones; // Antes decía 'nuevo'
+    listaCanciones = nueva;            // Antes decía 'nuevo'
     
     totalCanciones++;
 }
+
+// ==========================================
+// ALGORITMOS DE RECOMENDACIÓN
+// ==========================================
+
+// 1. TOP CANCIONES (Bubble Sort por Popularidad)
+vector<Cancion*> GestorGrafo::obtenerTopCanciones() {
+    vector<Cancion*> resultado;
+    Cancion* actual = listaCanciones;
+    
+    // Copiar a vector temporal
+    while (actual != nullptr) {
+        resultado.push_back(actual);
+        actual = actual->siguiente;
+    }
+
+    // Ordenamiento Manual (Bubble Sort) de Mayor a Menor
+    int n = resultado.size();
+    for (int i = 0; i < n - 1; i++) {
+        for (int j = 0; j < n - i - 1; j++) {
+            if (resultado[j]->totalReproducciones < resultado[j + 1]->totalReproducciones) {
+                Cancion* temp = resultado[j];
+                resultado[j] = resultado[j + 1];
+                resultado[j + 1] = temp;
+            }
+        }
+    }
+    return resultado;
+}
+
+// 2. RECOMENDACIÓN COLABORATIVA ("Vecinos")
+vector<Cancion*> GestorGrafo::recomendarParaUsuario(int idUsuario) {
+    vector<Cancion*> recomendaciones;
+    Usuario* usuarioTarget = buscarUsuarioPorId(idUsuario);
+    
+    if (usuarioTarget == nullptr) return recomendaciones;
+
+    cout << "\n[ALGORITMO] Analizando red de " << usuarioTarget->nombre << "..." << endl;
+
+    // Recorrer historial del usuario
+    Arista* miHistorial = usuarioTarget->cabezaHistorial;
+    
+    while (miHistorial != nullptr) {
+        Cancion* cancionQueMeGusta = miHistorial->cancion;
+        
+        // Ver vecinos (Vertical)
+        Arista* otrosOyentes = cancionQueMeGusta->cabezaOyentes;
+        while (otrosOyentes != nullptr) {
+            Usuario* vecino = otrosOyentes->usuario;
+            
+            // Si el vecino no soy yo mismo
+            if (vecino->id != usuarioTarget->id) {
+                
+                // Ver historial del vecino
+                Arista* historiaVecino = vecino->cabezaHistorial;
+                while (historiaVecino != nullptr) {
+                    Cancion* candidata = historiaVecino->cancion;
+                    
+                    // Filtros: Que yo no la tenga Y que no esté ya sugerida
+                    bool yaLaTengo = haEscuchado(usuarioTarget, candidata);
+                    bool yaSugerida = false;
+                    for(Cancion* s : recomendaciones) {
+                        if(s == candidata) yaSugerida = true;
+                    }
+
+                    if (!yaLaTengo && !yaSugerida) {
+                        recomendaciones.push_back(candidata);
+                        cout << "  -> (MATCH) Porque a " << vecino->nombre 
+                             << " le gusto '" << cancionQueMeGusta->nombre 
+                             << "', te sugiere: '" << candidata->nombre << "'" << endl;
+                    }
+                    historiaVecino = historiaVecino->sigEnHistorialUsuario;
+                }
+            }
+            otrosOyentes = otrosOyentes->sigEnOyentesCancion;
+        }
+        miHistorial = miHistorial->sigEnHistorialUsuario;
+    }
+    return recomendaciones;
+}
+
+// ==========================================
+// STUBS (Pendientes para futuras fases)
+// ==========================================
+
+float GestorGrafo::calcularCompatibilidad(int idUsuarioA, int idUsuarioB) {
+    return 0.0f; 
+}
+
+void GestorGrafo::cargarDatosDesdeCSV(string archivo) {}
+void GestorGrafo::generarDatosAleatorios(int cantidad) {}
