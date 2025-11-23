@@ -1,5 +1,6 @@
 #ifndef ESTRUCTURAS_H
 #define ESTRUCTURAS_H
+//suat lo mejor
 
 #include <string>
 #include <iostream>
