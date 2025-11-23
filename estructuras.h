@@ -1,6 +1,5 @@
 #ifndef ESTRUCTURAS_H
 #define ESTRUCTURAS_H
-//suat lo mas feka
 
 #include <string>
 #include <iostream>
@@ -9,7 +8,7 @@ using namespace std;
 
 // --- 1. ENUMS Y ESTRUCTURAS AUXILIARES ---
 
-// Géneros musicales para clasificar (vital para el filtrado)
+// Géneros musicales para clasificar
 enum Genero {
     LLANERA,
     ROCK,
@@ -20,67 +19,62 @@ enum Genero {
     INDIE
 };
 
-// INNOVACIÓN: En lugar de un solo peso int, usamos un "Vector de Vibe"
-// Esto nos permite calcular similitud no solo por rating, sino por "sentimiento".
+// Estructura para la innovación (Vibe)
 struct Vibe {
-    float energia;       // 0.0 (Chill) a 1.0 (Intenso)
-    float felicidad;     // 0.0 (Triste) a 1.0 (Feliz)
-    float bailable;      // 0.0 (Para escuchar) a 1.0 (Para bailar)
+    float energia;       
+    float felicidad;     
+    float bailable;      
 };
 
-// Forward declarations (necesario porque Arista usa Punteros a Usuario y Cancion)
+// Forward declarations
 struct Usuario;
 struct Cancion;
 
 // --- 2. LA ARISTA (El corazón del Grafo Bipartito) ---
 
 struct Arista {
-    // Conexiones del Grafo Bipartito [cite: 20]
-    Usuario* usuario;   // El nodo de origen (Set U)
-    Cancion* cancion;   // El nodo de destino (Set V)
+    // Conexiones
+    Usuario* usuario;   
+    Cancion* cancion;   
 
-    // Datos de la Interacción (Pesos y Metadatos) 
-    int calificacion;   // 1 a 5 estrellas
-    string comentario;  // Reseña textual
+    // Datos de la Interacción
+    int calificacion;   
+    string comentario;  
     bool esFavorito;
+    
+    // [NUEVO - ESTO FALTABA] Campo vital para que compile GestorGrafo.cpp
     int vecesEscuchada; 
     
-    // El peso calculado para el algoritmo (nuestra "salsa secreta")
+    // Peso calculado
     Vibe vibeMatch;     
-    float pesoFinal;    // Resultado de la fórmula de relevancia
+    float pesoFinal;    
 
-    // --- MAGIA DE PUNTEROS (MULTILISTA) ---
-    // Esta arista vive en dos listas enlazadas al mismo tiempo:
-    
-    // 1. Siguiente canción en el historial de ESTE usuario
+    // --- MULTILISTA ---
     Arista* sigEnHistorialUsuario; 
-    
-    // 2. Siguiente usuario que escuchó ESTA canción
     Arista* sigEnOyentesCancion;   
 
-    // Constructor para inicializar punteros en null (Buena práctica)
+    // Constructor
     Arista() : usuario(nullptr), cancion(nullptr), 
                sigEnHistorialUsuario(nullptr), sigEnOyentesCancion(nullptr),
-               pesoFinal(0.0) {}
+               pesoFinal(0.0), vecesEscuchada(0) {}
 };
 
-// --- 3. LOS NODOS (Vértices) ---
+// --- 3. LOS NODOS ---
 
 struct Cancion {
-    int id;                 // Identificador único
+    int id;                 
     string nombre;
     string artista;
     Genero genero;
     
-    // Perfil base de la canción (su ADN musical)
     Vibe vibePromedio;      
 
-    // Cabeza de la lista enlazada de quienes la han escuchado
-    //  (Grado del vértice = tamaño de esta lista)
     Arista* cabezaOyentes;  
-    int totalReproducciones; // Para métricas de popularidad [cite: 11]
+    
+    // [NUEVO - ESTO FALTABA] Campo para el ranking de popularidad
+    int totalReproducciones; 
 
-    Cancion* siguiente; // Para la lista general de canciones del sistema
+    Cancion* siguiente; 
     
     Cancion(int _id, string _n, string _a, Genero _g) 
         : id(_id), nombre(_n), artista(_a), genero(_g), 
@@ -90,18 +84,18 @@ struct Cancion {
 struct Usuario {
     int id;
     string nombre;
-    string pais; // Ej: "Colombia - Meta"
+    string pais; 
     
-    // Cabeza de la lista enlazada de su historial
     Arista* cabezaHistorial; 
 
-    Usuario* siguiente; // Para la lista general de usuarios del sistema
+    Usuario* siguiente; 
 
     Usuario(int _id, string _n, string _p) 
         : id(_id), nombre(_n), pais(_p), 
           cabezaHistorial(nullptr), siguiente(nullptr) {}
 };
 
+// --- UTILIDAD VISUAL ---
 inline string generoToString(Genero g) {
     switch(g) {
         case LLANERA: return "Llanera";
