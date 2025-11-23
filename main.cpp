@@ -15,12 +15,16 @@ void limpiarPantalla() {
     #endif
 }
 
+// Limpia el estado de cin y descarta hasta fin de línea
+void limpiarEntrada() {
+    cin.clear();
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+}
+
 // Función para pausar y que el usuario lea
 void pausar() {
     cout << "\nPresione Enter para continuar...";
-    // Se usa cin.ignore() y cin.get() para manejar el buffer de entrada después de leer un numero
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
-    cin.get();
 }
 
 // Módulo para interpretar la compatibilidad (10% de la nota)
@@ -30,16 +34,15 @@ void interpretarCompatibilidad(float comp) {
     cout << "Este es un metodo de Teoria de Conjuntos aplicado a Grafos Bipartitos." << endl;
     cout << "Formula: (Interseccion de gustos / Union de gustos) x 100." << endl;
     
-    if (comp > 80.0) {
+    if (comp > 80.0f) {
         cout << "Interpretacion: Los usuarios tienen una alta afinidad musical (> 80%). Comparten la mayoria de sus gustos y el Grafo Bipartito tiene un lazo muy fuerte entre sus vecinos. Esto predice una alta tasa de exito en las recomendaciones." << endl;
-    } else if (comp > 40.0) {
+    } else if (comp > 40.0f) {
         cout << "Interpretacion: Los usuarios tienen una compatibilidad media (40% - 80%). Comparten un conjunto significativo de canciones, lo que sugiere una buena base para la recomendacion colaborativa, pero con espacio para items nuevos." << endl;
     } else {
         cout << "Interpretacion: La compatibilidad es baja (< 40%). O no han interactuado con suficientes items o sus gustos estan en conjuntos separados del Grafo. La recomendacion debe enfocarse en la popularidad general (Grado de Vertice) o en la Vibe de la cancion." << endl;
     }
     cout << "========================================" << endl;
 }
-
 
 void mostrarMenu() {
     cout << "\n========================================" << endl;
@@ -57,7 +60,7 @@ void mostrarMenu() {
     cout << "\n --- CONSULTAS Y REPORTES ---" << endl;
     cout << " [4] Ver Top Canciones (Mas populares)" << endl;
     cout << " [8] VISUALIZAR GRAFO COMPLETO (Reporte Texto)" << endl;
-    cout << " [9] BUSCAR CANCION (Por nombre)" << endl;
+    cout << " [9] BUSCAR CANCION (Por nombre o artista)" << endl;
     
     cout << "\n --- INTELIGENCIA ARTIFICIAL ---" << endl;
     cout << " [5] RECOMENDAR Musica para un Usuario" << endl;
@@ -69,6 +72,25 @@ void mostrarMenu() {
     cout << " [0] Salir" << endl;
     cout << "========================================" << endl;
     cout << " Opcion: ";
+}
+
+int leerEnteroSeguro(const string &prompt, int minVal = INT_MIN, int maxVal = INT_MAX) {
+    int x;
+    while (true) {
+        cout << prompt;
+        if (cin >> x) {
+            if (x < minVal || x > maxVal) {
+                cout << "Valor fuera de rango. Intente de nuevo.\n";
+                limpiarEntrada();
+                continue;
+            }
+            limpiarEntrada(); // descarta newline restante
+            return x;
+        } else {
+            cout << "Entrada invalida. Intente de nuevo.\n";
+            limpiarEntrada();
+        }
+    }
 }
 
 int main() {
@@ -83,17 +105,22 @@ int main() {
     do {
         limpiarPantalla();
         mostrarMenu();
-        if (!(cin >> opcion)) { // Limpia el buffer si el input falla
-            cin.clear();
-            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+
+        // Lectura segura de opción
+        if (!(cin >> opcion)) {
+            cout << "Entrada invalida. Intente de nuevo." << endl;
+            limpiarEntrada();
             opcion = -1;
+            pausar();
+            continue;
         }
+        limpiarEntrada(); // descarta newline
 
         switch (opcion) {
             case 1: {
                 string n, p;
                 cout << "\n--- NUEVO USUARIO ---" << endl;
-                cout << "Nombre: "; cin.ignore(); getline(cin, n);
+                cout << "Nombre: "; getline(cin, n);
                 cout << "Pais: "; getline(cin, p);
                 app.agregarUsuario(n, p);
                 cout << "Usuario agregado con exito." << endl;
@@ -104,35 +131,37 @@ int main() {
                 string n, a;
                 int g;
                 cout << "\n--- NUEVA CANCION ---" << endl;
-                cout << "Titulo: "; cin.ignore(); getline(cin, n);
+                cout << "Titulo: "; getline(cin, n);
                 cout << "Artista: "; getline(cin, a);
-                cout << "Generos: 0=Llanera, 1=Rock, 2=Pop, 3=Salsa: "; cin >> g;
+                cout << "Generos: 0=Llanera, 1=Rock, 2=Pop, 3=Salsa, 4=Urbano, 5=Electronica, 6=Indie\n";
+                g = leerEnteroSeguro("Seleccione genero (0-6): ", 0, 6);
                 app.agregarCancion(n, a, (Genero)g);
                 cout << "Cancion agregada." << endl;
                 pausar();
                 break;
             }
             case 3: {
-                int idU, idC, cal;
-                bool fav;
+                int idU = leerEnteroSeguro("\nID Usuario: ", 1, INT_MAX);
+                int idC = leerEnteroSeguro("ID Cancion: ", 1, INT_MAX);
+                int cal = leerEnteroSeguro("Calificacion (1-5): ", 1, 5);
+                int favInt = leerEnteroSeguro("Es favorita? (1=Si, 0=No): ", 0, 1);
+                bool fav = (favInt != 0);
                 string com;
-                cout << "\n--- REGISTRAR INTERACCION ---" << endl;
-                cout << "ID Usuario: "; cin >> idU;
-                cout << "ID Cancion: "; cin >> idC;
-                cout << "Calificacion (1-5): "; cin >> cal;
-                cout << "Es favorita? (1=Si, 0=No): "; cin >> fav;
-                cout << "Comentario (una palabra): "; cin >> com;
-                
+                cout << "Comentario (una palabra o frase corta): ";
+                getline(cin, com); // lectura segura después de limpiarEntrada
+
                 app.registrarInteraccion(idU, idC, cal, fav, com);
+                cout << "Interaccion registrada." << endl;
                 pausar();
                 break;
             }
             case 4: {
                 cout << "\n--- TOP CANCIONES ---" << endl;
                 vector<Cancion*> top = app.obtenerTopCanciones();
-                if(top.empty()) cout << "No hay canciones aun." << endl;
-                else {
-                    for(int i=0; i<top.size() && i<10; i++) {
+                if(top.empty()) {
+                    cout << "No hay canciones aun." << endl;
+                } else {
+                    for(size_t i=0; i<top.size() && i<10; i++) {
                         cout << " #" << (i+1) << " " << top[i]->nombre 
                              << " - " << top[i]->artista 
                              << " (" << top[i]->totalReproducciones << " repros)" << endl;
@@ -142,28 +171,27 @@ int main() {
                 break;
             }
             case 5: {
-                int idTarget;
-                cout << "\n--- SISTEMA DE RECOMENDACION ---" << endl;
-                cout << "Ingrese ID del Usuario a recomendar: "; cin >> idTarget;
+                int idTarget = leerEnteroSeguro("\nIngrese ID del Usuario a recomendar: ", 1, INT_MAX);
                 
-                // La funcion de recomendacion ahora solo retorna el vector sin imprimir logs
                 vector<Cancion*> recs = app.recomendarParaUsuario(idTarget); 
                 
                 cout << "\n--- RESULTADOS ---" << endl;
-                if(recs.empty()) cout << "No hay suficiente informacion para recomendar." << endl;
-                
-                for(Cancion* c : recs) {
-                    cout << " [RECOMENDADA] " << c->nombre 
-                         << " (" << generoToString(c->genero) << ")" << endl;
+                if(recs.empty()) {
+                    cout << "No hay suficiente informacion para recomendar." << endl;
+                } else {
+                    int shown = 0;
+                    for(Cancion* c : recs) {
+                        cout << " [RECOMENDADA] " << c->nombre 
+                             << " (" << generoToString(c->genero) << ")" << endl;
+                        if (++shown >= 10) break; // limite de salida
+                    }
                 }
                 pausar();
                 break;
             }
             case 6: {
-                int id1, id2;
-                cout << "\n--- COMPATIBILIDAD (JACCARD) ---" << endl;
-                cout << "ID Usuario A: "; cin >> id1;
-                cout << "ID Usuario B: "; cin >> id2;
+                int id1 = leerEnteroSeguro("\nID Usuario A: ", 1, INT_MAX);
+                int id2 = leerEnteroSeguro("ID Usuario B: ", 1, INT_MAX);
                 ultimaCompatibilidad = app.calcularCompatibilidad(id1, id2);
                 cout << "La compatibilidad musical es: " << ultimaCompatibilidad << "%" << endl;
                 pausar();
@@ -171,8 +199,10 @@ int main() {
             }
             case 7: {
                 cout << "\n--- GENERADOR MASIVO ---" << endl;
-                cout << "Generando 600 interacciones..." << endl;
-                app.generarDatosAleatorios(600);
+                int cantidad = leerEnteroSeguro("Cantidad de interacciones a generar (ej: 600): ", 1, 1000000);
+                cout << "Generando " << cantidad << " interacciones..." << endl;
+                app.generarDatosAleatorios(cantidad);
+                cout << "Generador terminado." << endl;
                 pausar();
                 break;
             }
@@ -186,8 +216,7 @@ int main() {
             case 9: {
                 string busqueda;
                 cout << "\n--- BUSCADOR ---" << endl;
-                cout << "Ingrese nombre de cancion: "; 
-                cin.ignore(); 
+                cout << "Ingrese nombre o artista de cancion: "; 
                 getline(cin, busqueda);
                 
                 vector<Cancion*> encontrados = app.buscarCanciones(busqueda);
@@ -204,11 +233,9 @@ int main() {
                 break;
             }
             case 10: {
-                int id;
+                int id = leerEnteroSeguro("\nID de cancion a editar: ", 1, INT_MAX);
                 string n, a;
-                cout << "\n--- MODIFICAR CANCION ---" << endl;
-                cout << "ID de cancion a editar: "; cin >> id;
-                cout << "Nuevo Titulo: "; cin.ignore(); getline(cin, n);
+                cout << "Nuevo Titulo: "; getline(cin, n);
                 cout << "Nuevo Artista: "; getline(cin, a);
                 
                 if(app.modificarCancion(id, n, a)) cout << "Modificacion exitosa." << endl;
@@ -217,9 +244,7 @@ int main() {
                 break;
             }
             case 11: {
-                int id;
-                cout << "\n--- ELIMINAR CANCION ---" << endl;
-                cout << "ID de cancion a borrar: "; cin >> id;
+                int id = leerEnteroSeguro("\nID de cancion a borrar: ", 1, INT_MAX);
                 
                 if(app.eliminarCancion(id)) cout << "Cancion eliminada y conexiones borradas." << endl;
                 else cout << "Error: ID no encontrado." << endl;
