@@ -1,6 +1,6 @@
 #ifndef ESTRUCTURAS_H
 #define ESTRUCTURAS_H
-//suat lo peor 
+//suat lo peor en estructuras
 
 #include <string>
 #include <iostream>
