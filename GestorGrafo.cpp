@@ -5,6 +5,9 @@
 #include <cstdlib> 
 #include <ctime>   
 #include <algorithm> // Para transformar string a minusculas
+#include <unordered_set>
+#include <unordered_map>
+#include <limits>
 
 using namespace std;
 
@@ -18,22 +21,29 @@ GestorGrafo::GestorGrafo() {
     totalUsuarios = 0;
     totalCanciones = 0;
     totalInteracciones = 0;
+    nextUsuarioId = 1;
+    nextCancionId = 1;
 }
 
 GestorGrafo::~GestorGrafo() {
     cout << "[SISTEMA] Limpiando memoria..." << endl;
+    // Borrar todas las aristas de forma segura recorriendo usuarios
     Usuario* userActual = listaUsuarios;
     while (userActual != nullptr) {
-        Usuario* aBorrar = userActual;
-        userActual = userActual->siguiente;
-        Arista* aristaActual = aBorrar->cabezaHistorial;
+        Arista* aristaActual = userActual->cabezaHistorial;
         while (aristaActual != nullptr) {
             Arista* aristaBorrar = aristaActual;
             aristaActual = aristaActual->sigEnHistorialUsuario;
-            delete aristaBorrar; 
+            // Al borrar desde usuario, también debemos asegurarnos de no
+            // intentar borrarla de la lista de la canción dos veces.
+            // Aquí, como vamos a borrar canciones después, simplemente delete arista.
+            delete aristaBorrar;
         }
-        delete aBorrar; 
+        Usuario* tmpUser = userActual;
+        userActual = userActual->siguiente;
+        delete tmpUser;
     }
+    // Ahora borrar canciones
     Cancion* cancionActual = listaCanciones;
     while (cancionActual != nullptr) {
         Cancion* aBorrar = cancionActual;
@@ -65,12 +75,23 @@ Cancion* GestorGrafo::buscarCancionPorId(int id) {
 }
 
 bool GestorGrafo::haEscuchado(Usuario* u, Cancion* c) {
+    if (!u || !c) return false;
     Arista* actual = u->cabezaHistorial;
     while (actual != nullptr) {
         if (actual->cancion == c) return true;
         actual = actual->sigEnHistorialUsuario;
     }
     return false;
+}
+
+Arista* GestorGrafo::buscarAristaEnUsuario(Usuario* u, Cancion* c) {
+    if (!u || !c) return nullptr;
+    Arista* a = u->cabezaHistorial;
+    while (a) {
+        if (a->cancion == c) return a;
+        a = a->sigEnHistorialUsuario;
+    }
+    return nullptr;
 }
 
 void GestorGrafo::conectarNodos(Usuario* u, Cancion* c, Arista* nuevaArista) {
@@ -89,7 +110,7 @@ void GestorGrafo::conectarNodos(Usuario* u, Cancion* c, Arista* nuevaArista) {
     totalInteracciones++;
 }
 
-// Helper para borrar: Quita una arista de la lista horizontal de un usuario
+// Quita una arista de la lista horizontal de un usuario (no borra)
 void GestorGrafo::desconectarAristaDeUsuario(Usuario* u, Arista* aBorrar) {
     if (!u || !aBorrar) return;
 
@@ -108,12 +129,45 @@ void GestorGrafo::desconectarAristaDeUsuario(Usuario* u, Arista* aBorrar) {
     }
 }
 
+// Quita una arista de la lista vertical de una canción (no borra)
+void GestorGrafo::desconectarAristaDeCancion(Cancion* c, Arista* aBorrar) {
+    if (!c || !aBorrar) return;
+
+    if (c->cabezaOyentes == aBorrar) {
+        c->cabezaOyentes = aBorrar->sigEnOyentesCancion;
+        return;
+    }
+
+    Arista* prev = c->cabezaOyentes;
+    while (prev != nullptr && prev->sigEnOyentesCancion != aBorrar) {
+        prev = prev->sigEnOyentesCancion;
+    }
+
+    if (prev != nullptr) {
+        prev->sigEnOyentesCancion = aBorrar->sigEnOyentesCancion;
+    }
+}
+
+// Borra la arista quitándola de ambas listas y actualizando contadores
+void GestorGrafo::borrarArista(Arista* aBorrar) {
+    if (!aBorrar) return;
+    Usuario* u = aBorrar->usuario;
+    Cancion* c = aBorrar->cancion;
+    if (u) desconectarAristaDeUsuario(u, aBorrar);
+    if (c) {
+        desconectarAristaDeCancion(c, aBorrar);
+        if (c->totalReproducciones > 0) c->totalReproducciones--;
+    }
+    if (totalInteracciones > 0) totalInteracciones--;
+    delete aBorrar;
+}
+
 // ==========================================
 // GESTIÓN DE DATOS (ABM & BÚSQUEDA)
 // ==========================================
 
 void GestorGrafo::agregarUsuario(string nombre, string pais) {
-    int nuevoId = totalUsuarios + 1;
+    int nuevoId = nextUsuarioId++;
     Usuario* nuevo = new Usuario(nuevoId, nombre, pais);
     nuevo->siguiente = listaUsuarios;
     listaUsuarios = nuevo;
@@ -121,7 +175,7 @@ void GestorGrafo::agregarUsuario(string nombre, string pais) {
 }
 
 void GestorGrafo::agregarCancion(string nombre, string artista, Genero genero) {
-    int nuevoId = totalCanciones + 1;
+    int nuevoId = nextCancionId++;
     Cancion* nueva = new Cancion(nuevoId, nombre, artista, genero);
     nueva->siguiente = listaCanciones;
     listaCanciones = nueva;
@@ -148,17 +202,14 @@ bool GestorGrafo::eliminarCancion(int id) {
 
     if(actual == nullptr) return false; // No encontrada
 
-    // 2. ELIMINAR ARISTAS (Crucial: Desconectar de los usuarios primero)
+    // 2. ELIMINAR ARISTAS (Desconectar desde la lista de oyentes de la canción)
     Arista* aristaVertical = actual->cabezaOyentes;
     while(aristaVertical != nullptr) {
         Arista* aBorrar = aristaVertical;
         aristaVertical = aristaVertical->sigEnOyentesCancion;
         
-        // Vamos al usuario y le quitamos esta arista de su historial
-        desconectarAristaDeUsuario(aBorrar->usuario, aBorrar);
-        
-        delete aBorrar; // Liberar memoria de la arista
-        totalInteracciones--;
+        // Vamos al usuario y le quitamos esta arista de su historial y la borramos
+        borrarArista(aBorrar);
     }
 
     // 3. Sacar la canción de la lista maestra
@@ -169,23 +220,28 @@ bool GestorGrafo::eliminarCancion(int id) {
     }
 
     delete actual; // Liberar memoria de la canción
-    totalCanciones--;
+    if (totalCanciones > 0) totalCanciones--;
     return true;
+}
+
+string toLowerSafe(const string &s) {
+    string out = s;
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
+    }
+    return out;
 }
 
 vector<Cancion*> GestorGrafo::buscarCanciones(string termino) {
     vector<Cancion*> encontrados;
-    // Convertir termino a minusculas para busqueda flexible
-    string termLower = termino;
-    transform(termLower.begin(), termLower.end(), termLower.begin(), ::tolower);
+    string termLower = toLowerSafe(termino);
 
     Cancion* actual = listaCanciones;
     while(actual != nullptr) {
-        string nombreLower = actual->nombre;
-        transform(nombreLower.begin(), nombreLower.end(), nombreLower.begin(), ::tolower);
+        string nombreLower = toLowerSafe(actual->nombre);
+        string artistaLower = toLowerSafe(actual->artista);
         
-        // Si el nombre contiene el termino
-        if(nombreLower.find(termLower) != string::npos) {
+        if(nombreLower.find(termLower) != string::npos || artistaLower.find(termLower) != string::npos) {
             encontrados.push_back(actual);
         }
         actual = actual->siguiente;
@@ -225,6 +281,20 @@ void GestorGrafo::registrarInteraccion(int idUsuario, int idCancion, int calific
 
     if (u == nullptr || c == nullptr) return;
 
+    // Evitar duplicados: si ya existe arista entre u y c, actualizarla
+    Arista* existente = buscarAristaEnUsuario(u, c);
+    if (existente) {
+        existente->vecesEscuchada++;
+        existente->calificacion = calificacion; // podrías promediar si prefieres
+        existente->esFavorito = favorito;
+        existente->comentario = comentario;
+        float pesoBase = (calificacion * 20.0f);
+        if (favorito) pesoBase += 15.0f;
+        existente->pesoFinal = pesoBase;
+        // actualizar contador de reproducciones porque no creamos nueva arista
+        return;
+    }
+
     Arista* nueva = new Arista();
     nueva->calificacion = calificacion;
     nueva->esFavorito = favorito;
@@ -250,16 +320,11 @@ vector<Cancion*> GestorGrafo::obtenerTopCanciones() {
         actual = actual->siguiente;
     }
 
-    int n = resultado.size();
-    for (int i = 0; i < n - 1; i++) {
-        for (int j = 0; j < n - i - 1; j++) {
-            if (resultado[j]->totalReproducciones < resultado[j + 1]->totalReproducciones) {
-                Cancion* temp = resultado[j];
-                resultado[j] = resultado[j + 1];
-                resultado[j + 1] = temp;
-            }
-        }
-    }
+    // Usa std::sort para mejor rendimiento
+    sort(resultado.begin(), resultado.end(), [](Cancion* a, Cancion* b){
+        return a->totalReproducciones > b->totalReproducciones;
+    });
+
     return resultado;
 }
 
@@ -268,30 +333,83 @@ vector<Cancion*> GestorGrafo::recomendarParaUsuario(int idUsuario) {
     Usuario* usuarioTarget = buscarUsuarioPorId(idUsuario);
     if (usuarioTarget == nullptr) return recomendaciones;
 
-    Arista* miHistorial = usuarioTarget->cabezaHistorial;
-    while (miHistorial != nullptr) {
-        Cancion* cancionQueMeGusta = miHistorial->cancion;
-        Arista* otrosOyentes = cancionQueMeGusta->cabezaOyentes;
-        while (otrosOyentes != nullptr) {
-            Usuario* vecino = otrosOyentes->usuario;
-            if (vecino->id != usuarioTarget->id) {
-                Arista* historiaVecino = vecino->cabezaHistorial;
-                while (historiaVecino != nullptr) {
-                    Cancion* candidata = historiaVecino->cancion;
-                    bool yaLaTengo = haEscuchado(usuarioTarget, candidata);
-                    bool yaSugerida = false;
-                    for(Cancion* s : recomendaciones) if(s == candidata) yaSugerida = true;
+    // 1) Recopilar canciones ya escuchadas por el usuario
+    unordered_set<int> yaEscuchadas;
+    Arista* aHist = usuarioTarget->cabezaHistorial;
+    while (aHist) {
+        yaEscuchadas.insert(aHist->cancion->id);
+        aHist = aHist->sigEnHistorialUsuario;
+    }
 
-                    if (!yaLaTengo && !yaSugerida) {
-                        recomendaciones.push_back(candidata);
+    // 2) Score de candidatos: map canción.id -> puntaje
+    unordered_map<int, float> scoreMap;
+    unordered_map<int, Cancion*> songById;
+
+    aHist = usuarioTarget->cabezaHistorial;
+    while (aHist) {
+        Cancion* cancionBase = aHist->cancion;
+        Arista* oyentes = cancionBase->cabezaOyentes;
+        while (oyentes) {
+            Usuario* vecino = oyentes->usuario;
+            if (vecino && vecino->id != usuarioTarget->id) {
+                // considerar solo vecinos con peso razonable (umbral opcional)
+                Arista* hVec = vecino->cabezaHistorial;
+                while (hVec) {
+                    Cancion* candidata = hVec->cancion;
+                    if (!candidata) { hVec = hVec->sigEnHistorialUsuario; continue; }
+                    if (yaEscuchadas.count(candidata->id) == 0) {
+                        // aumentar score por el peso de la arista del vecino
+                        scoreMap[candidata->id] += oyentes->pesoFinal; // vecino->arista->pesoFinal
+                        songById[candidata->id] = candidata;
                     }
-                    historiaVecino = historiaVecino->sigEnHistorialUsuario;
+                    hVec = hVec->sigEnHistorialUsuario;
                 }
             }
-            otrosOyentes = otrosOyentes->sigEnOyentesCancion;
+            oyentes = oyentes->sigEnOyentesCancion;
         }
-        miHistorial = miHistorial->sigEnHistorialUsuario;
+        aHist = aHist->sigEnHistorialUsuario;
     }
+
+    // Transformar score map en vector ordenado
+    vector<pair<int,float>> listaScores;
+    for (auto &p : scoreMap) listaScores.push_back(p);
+    sort(listaScores.begin(), listaScores.end(), [](const pair<int,float>& A, const pair<int,float>& B){
+        return A.second > B.second;
+    });
+
+    for (auto &p : listaScores) {
+        recomendaciones.push_back(songById[p.first]);
+    }
+
+    // Si no se generaron recomendaciones (nuevo usuario o aislado), fallback por genero
+    if (recomendaciones.empty()) {
+        // encontrar genero favorito del usuario (por pesoFinal en su historial)
+        unordered_map<Genero, float> generoScore;
+        aHist = usuarioTarget->cabezaHistorial;
+        while (aHist) {
+            generoScore[aHist->cancion->genero] += aHist->pesoFinal;
+            aHist = aHist->sigEnHistorialUsuario;
+        }
+        Genero favorito = LLANERA;
+        if (!generoScore.empty()) {
+            float best = numeric_limits<float>::lowest();
+            for (auto &g : generoScore) if (g.second > best) { best = g.second; favorito = g.first; }
+            // sugerir top canciones del mismo genero
+            vector<Cancion*> todas = obtenerTopCanciones();
+            for (Cancion* c : todas) {
+                if (c->genero == favorito && yaEscuchadas.count(c->id)==0) recomendaciones.push_back(c);
+                if (recomendaciones.size() >= 10) break;
+            }
+        } else {
+            // fallback final: top global
+            vector<Cancion*> todas = obtenerTopCanciones();
+            for (Cancion* c : todas) {
+                if (yaEscuchadas.count(c->id)==0) recomendaciones.push_back(c);
+                if (recomendaciones.size() >= 10) break;
+            }
+        }
+    }
+
     return recomendaciones;
 }
 
@@ -300,24 +418,17 @@ float GestorGrafo::calcularCompatibilidad(int idUsuarioA, int idUsuarioB) {
     Usuario* userB = buscarUsuarioPorId(idUsuarioB);
     if (!userA || !userB) return 0.0f;
 
-    float interseccion = 0;
-    float union_conjuntos = 0;
+    unordered_set<int> setA, setB;
+    Arista* a = userA->cabezaHistorial;
+    while (a) { setA.insert(a->cancion->id); a = a->sigEnHistorialUsuario; }
+    a = userB->cabezaHistorial;
+    while (a) { setB.insert(a->cancion->id); a = a->sigEnHistorialUsuario; }
 
-    Arista* historialA = userA->cabezaHistorial;
-    while (historialA != nullptr) {
-        union_conjuntos++;
-        if (haEscuchado(userB, historialA->cancion)) interseccion++;
-        historialA = historialA->sigEnHistorialUsuario;
-    }
-
-    Arista* historialB = userB->cabezaHistorial;
-    while (historialB != nullptr) {
-        if (!haEscuchado(userA, historialB->cancion)) union_conjuntos++;
-        historialB = historialB->sigEnHistorialUsuario;
-    }
-
-    if (union_conjuntos == 0) return 0.0f;
-    return (interseccion / union_conjuntos) * 100.0f;
+    int inter = 0;
+    for (int id : setA) if (setB.count(id)) inter++;
+    int uni = (int)(setA.size() + setB.size() - inter);
+    if (uni == 0) return 0.0f;
+    return ( (float)inter / (float)uni ) * 100.0f;
 }
 
 // ==========================================
@@ -325,12 +436,12 @@ float GestorGrafo::calcularCompatibilidad(int idUsuarioA, int idUsuarioB) {
 // ==========================================
 
 void GestorGrafo::generarDatosAleatorios(int cantidadAristas) {
-    srand(time(0));
+    srand((unsigned int)time(0));
     cout << "[GENERADOR] Verificando poblacion minima..." << endl;
 
     string nombres[] = {"Carlos", "Ana", "Luis", "Sofia", "Jorge", "Laura", "Andres", "Valentina", "Nestor", "Camila"};
     string paises[] = {"Colombia", "Mexico", "Peru", "Argentina", "Chile"};
-    // AUMENTADO A 50 PARA EVITAR BUCLE INFINITO
+    // Asegurar al menos 50 usuarios
     while(totalUsuarios < 50) { 
         string n = nombres[rand() % 10] + to_string(rand()%100);
         agregarUsuario(n, paises[rand() % 5]);
@@ -338,14 +449,19 @@ void GestorGrafo::generarDatosAleatorios(int cantidadAristas) {
 
     string artistas[] = {"Shakira", "Juanes", "J Balvin", "Niche", "Diomedes", "Queen", "Nirvana"};
     string titulos[] = {"Amor", "Fiesta", "Dolor", "Noche", "Dia", "Sueno", "Vida"};
-    // AUMENTADO A 50 PARA EVITAR BUCLE INFINITO
+    // Asegurar al menos 50 canciones
     while(totalCanciones < 50) { 
         string t = titulos[rand() % 7] + " " + to_string(rand() % 100);
         agregarCancion(t, artistas[rand() % 7], (Genero)(rand() % 7));
     }
 
     cout << "[GENERADOR] Insertando " << cantidadAristas << " interacciones aleatorias..." << endl;
-    for (int i = 0; i < cantidadAristas; i++) {
+    int insertadas = 0;
+    int intentos = 0;
+    int maxIntentos = max(100000, cantidadAristas * 10);
+
+    while (insertadas < cantidadAristas && intentos < maxIntentos) {
+        intentos++;
         int rUser = (rand() % totalUsuarios) + 1; 
         int rSong = (rand() % totalCanciones) + 1;
         
@@ -354,12 +470,37 @@ void GestorGrafo::generarDatosAleatorios(int cantidadAristas) {
         
         if (u && c && !haEscuchado(u, c)) {
             registrarInteraccion(rUser, rSong, (rand()%5)+1, (rand()%2), "Generado Auto");
-        } else {
-            i--; 
-            if(i > 20000) break; 
+            insertadas++;
         }
     }
-    cout << "[GENERADOR] Finalizado. Total aristas: " << totalInteracciones << endl;
+
+    cout << "[GENERADOR] Finalizado. Intentos: " << intentos << "  Insertadas: " << insertadas << "  Total aristas: " << totalInteracciones << endl;
 }
 
-void GestorGrafo::cargarDatosDesdeCSV(string archivo) {}
+void GestorGrafo::cargarDatosDesdeCSV(string archivo) {
+    ifstream in(archivo);
+    if (!in.is_open()) {
+        cout << "[CSV] Error abriendo archivo: " << archivo << endl;
+        return;
+    }
+    // Formato esperado: idUsuario, idCancion, calificacion, favorito(0/1), comentario
+    string line;
+    while (getline(in, line)) {
+        if (line.empty()) continue;
+        stringstream ss(line);
+        string token;
+        int idU, idC, cal, fav;
+        string comentario;
+        if (!getline(ss, token, ',')) continue;
+        idU = stoi(token);
+        if (!getline(ss, token, ',')) continue;
+        idC = stoi(token);
+        if (!getline(ss, token, ',')) continue;
+        cal = stoi(token);
+        if (!getline(ss, token, ',')) continue;
+        fav = stoi(token);
+        if (!getline(ss, comentario, ',')) comentario = "";
+        registrarInteraccion(idU, idC, cal, (fav!=0), comentario);
+    }
+    in.close();
+}
