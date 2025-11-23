@@ -101,4 +101,17 @@ struct Usuario {
           cabezaHistorial(nullptr), siguiente(nullptr) {}
 };
 
+inline string generoToString(Genero g) {
+    switch(g) {
+        case LLANERA: return "Llanera";
+        case ROCK: return "Rock";
+        case POP: return "Pop";
+        case SALSA: return "Salsa";
+        case URBANO: return "Urbano";
+        case ELECTRONICA: return "Electronica";
+        case INDIE: return "Indie";
+        default: return "Desconocido";
+    }
+}
+
 #endif // ESTRUCTURAS_H
